@@ -2,19 +2,49 @@ name: Discussions Runner
 
 on:
   workflow_dispatch:
-    inputs:
-      action:
-        description: 'Action to perform'
-        required: true
-        default: 'create_and_mark'
 
 permissions:
-  contents: read
   discussions: write
 
 jobs:
-  run-discussion:
+  test-discussion:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Discussions Permission
-        run: echo "Discussions workflow ready"
+      - name: Create Discussion via GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import urllib.request, json, os
+
+          token = os.environ['GH_TOKEN']
+          url = 'https://api.github.com/graphql'
+          query = '''
+          mutation {
+            createDiscussion(input: {
+              repositoryId: \"R_kgDOVkf2yA\",
+              categoryId: \"DIC_kwDOVkf2yM4DKesQ\",
+              title: \"Test Question: Linux io_uring SQPOLL Invariants\",
+              body: \"What are the precise kernel thread invariants of Linux io_uring when IORING_SETUP_SQPOLL is configured?\"
+            }) {
+              discussion {
+                id
+                number
+                url
+                author {
+                  login
+                }
+              }
+            }
+          }
+          '''
+          req = urllib.request.Request(url, data=json.dumps({'query': query}).encode('utf-8'), headers={
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+          })
+          try:
+            with urllib.request.urlopen(req) as resp:
+              print(resp.read().decode('utf-8'))
+          except urllib.error.HTTPError as e:
+            print(f'HTTP {e.code}: {e.read().decode(\"utf-8\")}')
+          "
