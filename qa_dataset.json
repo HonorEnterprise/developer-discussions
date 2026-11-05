@@ -1,0 +1,157 @@
+[
+  {
+    "title": "TCP Fast Open (TFO) SYN payload mechanics and cookie validation",
+    "question": "How does TCP Fast Open validate cookies and handle data payloads during the initial SYN packet without exposing endpoints to amplification attacks?",
+    "answer": "TCP Fast Open (RFC 7413) eliminates one RTT of handshake latency by allowing data transmission within the SYN packet. The client requests a TFO cookie in an initial handshake by sending a TCP option with an empty cookie field. The server computes a 16-byte cryptographic MAC over the client IP address using a secret server-side key and returns it in the SYN-ACK. On subsequent connections, the client includes this cookie and payload in the SYN packet. The server validates the MAC. If valid, the server accepts the payload into its socket receive buffer and immediately delivers it to the application before sending SYN-ACK, bounding amplification risk because cookie issuance verifies prior client reachability."
+  },
+  {
+    "title": "LSM-Tree compaction write amplification vs space amplification trade-offs",
+    "question": "What are the structural trade-offs between Leveled Compaction and Size-Tiered Compaction regarding write amplification and space amplification?",
+    "answer": "Leveled Compaction limits space amplification to approximately 10-15% by enforcing that keys are strictly non-overlapping within each level from L1 downward. However, this raises write amplification to O(T * L), where T is the level multiplier (typically 10) and L is the tree depth, as SSTables must be rewritten entirely across adjacent levels. Size-Tiered Compaction batches writes into similarly sized SSTables within a single tier, minimizing write amplification during ingest, but incurs space amplification up to 100% or higher because multiple SSTables in the same tier maintain overlapping key ranges until a full compaction pass merges them."
+  },
+  {
+    "title": "Linux splice(2) and vmsplice(2) zero-copy pipe buffer semantics",
+    "question": "How do splice(2) and vmsplice(2) implement zero-copy data routing through Linux pipe buffers without duplicating memory pages?",
+    "answer": "splice(2) transfers data between two file descriptors (where at least one is a pipe) by transferring page references rather than copying user-space bytes. The kernel wraps memory pages in `struct pipe_buffer` descriptors pointing to physical `struct page` instances. When splicing from a socket or file into a pipe, the pipe buffer stores page pointers and increments page refcounts. Splicing from the pipe to the target descriptor submits those identical pages to the driver. vmsplice(2) maps arbitrary user memory into a pipe without copying by acquiring page pins via `get_user_pages_fast()`. If SPLICE_F_GIFT is omitted, the user process must not modify the underlying buffer until the recipient consumes it."
+  },
+  {
+    "title": "Lamport Timestamps vs Vector Clocks: Causality violation detection",
+    "question": "Why can Lamport Timestamps only produce a strict partial order of events while Vector Clocks are required to detect concurrent operations?",
+    "answer": "Lamport Timestamps assign a monotonically increasing scalar clock L(e) to every event e such that if e1 -> e2, then L(e1) < L(e2). However, the converse does not hold: L(e1) < L(e2) does not imply e1 caused e2, meaning Lamport Timestamps cannot distinguish concurrent events from causally related events. Vector Clocks maintain an integer array V where V[i] represents node i's local logical time. Event e1 causally precedes e2 if and only if V(e1)[k] <= V(e2)[k] for all indices k and strictly less for at least one. If neither V(e1) <= V(e2) nor V(e2) <= V(e1), the system mathematically identifies the operations as concurrent, enabling conflict detection."
+  },
+  {
+    "title": "WebAssembly linear memory bounding and guard pages on 64-bit architectures",
+    "question": "How do modern WebAssembly runtimes implement sandboxed 32-bit linear memory access on 64-bit architectures without emitting bounds check instructions?",
+    "answer": "Wasm runtimes on 64-bit platforms allocate an 8 GB virtual address reservation using `mmap(PROT_NONE)`. The first 4 GB corresponds to the maximum addressable Wasm 32-bit linear memory space, of which the runtime commits pages backed by physical memory as the heap grows. The trailing 4 GB consists entirely of unmapped guard pages with `PROT_NONE`. Because a 32-bit pointer plus a 32-bit static immediate offset cannot exceed 8 GB, any out-of-bounds address automatically lands in a guard page. The runtime registers a `SIGSEGV` / `SIGBUS` signal handler to catch faults, map the instruction address to the Wasm fault frame, and raise a trap without runtime bounds check branches."
+  },
+  {
+    "title": "Linux Pressure Stall Information (PSI): some vs full pressure metrics",
+    "question": "What is the operational distinction between the 'some' and 'full' metrics in Linux Pressure Stall Information for CPU, memory, and I/O?",
+    "answer": "Linux PSI tracks resource starvation by measuring the percentage of wall-clock time that tasks spend stalled on resources. The 'some' metric represents the fraction of time during which at least one task is stalled waiting for the resource (e.g., waiting for memory reclaim, page cache read, or CPU runqueue assignment) while other tasks may still execute productively. The 'full' metric represents complete capacity saturation, measuring the fraction of time during which all non-idle tasks are simultaneously stalled. For CPU, only 'some' exists because if any CPU core is executing code, capacity is not 100% stalled across the system."
+  },
+  {
+    "title": "Consistent Hashing with Bounded Loads algorithm mechanics",
+    "question": "How does the Consistent Hashing with Bounded Loads algorithm avoid server hot-spotting while maintaining consistent hashing topology?",
+    "answer": "Standard consistent hashing maps keys to the next clockwise node on a hash ring, but under non-uniform key distributions, load imbalances can reach O(log N). The bounded load variant (Mirrokni et al.) computes an upper bound on capacity: L = ceil((1 + epsilon) * M / N), where M is current total requests, N is server count, and epsilon is a slack parameter. During lookup, a key maps to its primary clockwise server on the ring. If that server currently holds L active connections or items, the algorithm walks clockwise to the next node, repeating until it finds a server with load < L. This guarantees no server exceeds (1 + epsilon) times the average load."
+  },
+  {
+    "title": "TLS 1.3 0-RTT Anti-Replay: ClientHello timestamps vs single-use ticket keys",
+    "question": "How do production TLS 1.3 implementations defend against replay attacks on early 0-RTT application data?",
+    "answer": "0-RTT data sent in TLS 1.3 is intrinsically vulnerable to network replays because attackers can duplicate the ClientHello and early data payload without possessing session keys. Deployments enforce anti-replay using two complementary mechanisms: 1) Single-use Pre-Shared Key (PSK) ticket tracking: The server maintains a distributed Bloom filter or cache of consumed ticket identifiers; repeated tickets are rejected and downgraded to 1-RTT. 2) ClientHello timestamp windows: The server embeds the ticket generation timestamp in the obfuscated ticket age. It computes the client's reported age minus local clock delta. If the difference exceeds allowable clock skew, 0-RTT is rejected."
+  },
+  {
+    "title": "Two-Phase Locking (2PL) vs MVCC in high-write workloads",
+    "question": "Why does strict Two-Phase Locking suffer from cascading aborts and deadlocks under heavy concurrent updates compared to MVCC with serialization graph checking?",
+    "answer": "Strict 2PL acquires exclusive write locks that block both concurrent readers and concurrent writers until transaction commit. Under high write contention on overlapping row sets, transactions form wait-for dependency cycles requiring deadlock detection and aborts. In contrast, MVCC decouples readers from writers by maintaining version chains in an undo log or append store. Readers access the latest committed version visible at their snapshot timestamp without taking shared locks. Serializability under MVCC (SSI) checks for read-write conflict cycles (rw-antidependencies) in a graph rather than blocking execution, reducing latency and avoiding reader starvation."
+  },
+  {
+    "title": "Linux seccomp-bpf filter evaluation overhead and cBPF-to-eBPF JIT compilation",
+    "question": "How does the Linux kernel optimize seccomp-bpf system call filtering using classic BPF instruction tree linearization and JIT compilation?",
+    "answer": "seccomp-bpf attaches a filter program written in cBPF (classic BPF) to evaluate system call numbers and argument values upon every `syscall` instruction. When a filter consists of sequential `if (nr == __NR_read)` comparisons, traversal overhead scales O(N) per syscall. The kernel compiles cBPF programs into native architecture instructions via the eBPF JIT compiler. Furthermore, modern runtimes structure their filter AST as a binary search tree over syscall numbers, lowering lookup latency from O(N) to O(log N). Once compiled, the syscall handler branches directly to the JITed machine code in kernel space."
+  },
+  {
+    "title": "False Sharing in symmetric multiprocessing: Cache-line bounce mitigation",
+    "question": "How does false sharing occur in multithreaded systems with shared cache lines, and how is it eliminated in high-throughput C++ structures?",
+    "answer": "False sharing occurs when independent threads running on distinct CPU cores read and modify distinct variables that reside within the same physical cache line (typically 64 bytes). Under the MESI/MOESI cache coherence protocols, when core A executes an atomic store or write to variable X, it broadcasts an Invalidation message. This transitions core B's cache line containing variable Y to the Invalid state, forcing core B to stall on an L3 or memory bus fetch. This is eliminated by aligning variables to the hardware destructive interference size: `alignas(std::hardware_destructive_interference_size)` or inserting 64-byte explicit padding arrays."
+  },
+  {
+    "title": "Branchless programming: Bitwise selection vs branch prediction penalty",
+    "question": "At what misprediction rate does a conditional branch become slower than branchless bitwise arithmetic selection on modern superscalar CPUs?",
+    "answer": "Modern out-of-order x86-64 and ARM pipelines feature branch predictors with >95% accuracy for regular access patterns. However, a single branch misprediction flushes the execution pipeline, incurring a penalty of 14-20 CPU cycles. A branchless bitwise selection (such as `x ^ ((x ^ y) & -(x < y))` or the `cmov` instruction) executes with deterministic 1-2 cycle latency regardless of input randomness. When the branch outcome is statistically non-deterministic (misprediction rate exceeds ~5-8%), the expected cycle cost of the branch exceeds the branchless ALU sequence, making branchless logic faster."
+  },
+  {
+    "title": "Raft Pre-Vote Extension: Mitigating disruption from partitioned followers",
+    "question": "Why is the Pre-Vote phase essential in Raft consensus to prevent stale network-partitioned nodes from disrupting active cluster quorums?",
+    "answer": "In basic Raft, when a follower is partitioned from the cluster, it ceases receiving heartbeats. Once its election timer expires, it increments its `currentTerm` and broadcasts `RequestVote`. When the network partition heals, this node rejoins the cluster presenting an inflated term. All nodes, including the active leader, see this higher term and immediately step down to follower status, triggering an unnecessary reelection cycle. The Pre-Vote extension adds a non-committal round where the candidate asks peers if its log is sufficiently up to date and if peers have seen recent leader heartbeats. Because peers reject pre-votes when their leader is healthy, the partitioned candidate cannot increment the cluster term."
+  },
+  {
+    "title": "eBPF BPF-to-BPF function calls vs tail calls: Stack frame and verification differences",
+    "question": "What are the structural and verifier differences between native BPF-to-BPF calls and BPF tail calls in Linux kernel programs?",
+    "answer": "BPF tail calls jump to another BPF program using a program array map (`BPF_MAP_TYPE_PROG_ARRAY`) via the `bpf_tail_call()` helper. Tail calls replace the current execution context entirely, re-initializing the 512-byte stack frame and limiting recursion depth to a fixed runtime counter (typically 33). In contrast, BPF-to-BPF calls behave like conventional C function calls: they allocate stack frames within a shared 512-byte total stack budget and pass arguments through registers R1-R5. The eBPF verifier inspects BPF-to-BPF calls as a unified control flow graph during load time, ensuring memory safety across call boundaries."
+  },
+  {
+    "title": "DPDK Poll Mode Driver (PMD) vs Linux NAPI: Packet processing overhead",
+    "question": "How does DPDK's Poll Mode Driver eliminate kernel network stack overhead compared to Linux NAPI interrupt mitigation?",
+    "answer": "Linux NAPI switches between hardware interrupts and softirq-driven polling once packet rates cross a threshold, but packets still traverse `sk_buff` allocation, network namespace routing, netfilter hooks, and socket receive queue lock acquisitions. DPDK bypasses the kernel network stack completely via UIO or VFIO. The Poll Mode Driver runs in user-space, dedicating execution cores to busy-polling NIC RX ring descriptors in cache-aligned batches (typically 32 packets). Packets map directly into pre-allocated `rte_mempool` hugepage buffers via zero-copy DMA, eliminating context switches, syscall overhead, and page remapping."
+  },
+  {
+    "title": "Memory Barriers in lock-free SPSC ring buffers on ARMv8 vs x86-64",
+    "question": "Why do lock-free SPSC queues require explicit memory barriers on ARMv8 while x86-64 provides natural acquire/release semantics for plain stores and loads?",
+    "answer": "x86-64 implements Total Store Order (TSO), which guarantees that stores are not reordered with other stores (Store-Store order) and loads are not reordered with other loads (Load-Load order). Consequently, a plain store on x86 behaves with implicit Release semantics, and a load behaves with Acquire semantics. ARMv8 utilizes a weakly ordered memory model where the CPU and interconnect may reorder any independent memory access. In an SPSC queue on ARMv8, writing the data slot followed by updating the write pointer requires an explicit `stlr` (Store-Release) instruction to ensure consumer cores observing the updated pointer also observe the written payload."
+  },
+  {
+    "title": "Copy-on-Write (CoW) B-Trees vs Write-Ahead Logging (WAL) in crash recovery",
+    "question": "How does a Copy-on-Write B-Tree (e.g., LMDB) achieve ACID crash consistency without maintaining a separate Write-Ahead Log?",
+    "answer": "Traditional B-Tree databases write modifications into a sequential Write-Ahead Log on disk before updating dirty pages in-place. On restart after a crash, the recovery manager replays the WAL to restore page integrity. A CoW B-Tree never modifies dirty pages in place. When a node changes, the engine writes the modified node into freshly allocated free pages on disk, recursively copying parent nodes up to a new root pointer. The transaction commits via a single atomic update to the meta-page root pointer followed by an `fdatasync()`. If a crash occurs before the meta-page is flushed, the database opens the prior valid root with zero recovery delay."
+  },
+  {
+    "title": "RDMA RC (Reliable Connected) vs UD (Unreliable Datagram) queue overhead",
+    "question": "Why does RDMA Reliable Connected transport suffer from memory scalability limits at high node counts compared to Unreliable Datagram transport?",
+    "answer": "In RDMA Reliable Connected (RC) mode, each pair of communicating processes requires a dedicated Queue Pair (QP) consisting of a Send Queue, Receive Queue, and Completion Queue context cached on the NIC's onboard SRAM. As cluster size grows to thousands of nodes, maintaining N^2 RC connections exceeds NIC cache capacity, triggering cache misses to host DRAM across the PCIe bus and degrading latency. Unreliable Datagram (UD) mode allows a single QP to communicate with any number of remote endpoints, preserving NIC SRAM cache efficiency at the cost of requiring application-level packet sequencing and MTU size limitations."
+  },
+  {
+    "title": "Epoll event starvation in multithreaded edge-triggered worker pools",
+    "question": "How does edge-triggered epoll (EPOLLET) lead to socket starvation in multi-threaded event loops, and how is EPOLLEXCLUSIVE used to mitigate it?",
+    "answer": "With edge-triggered epoll (`EPOLLET`), the kernel notifies the application only when a state change occurs on the file descriptor (e.g., transition from empty buffer to having data). If multiple threads share an `epoll_create` instance, an event wake-up can trigger the thundering herd problem where all threads awake to accept a single connection. Furthermore, if a worker thread loops draining data using `read(2)` until `EAGAIN`, high-bandwidth connections keep that thread locked in an infinite read loop while other connections starve. `EPOLLEXCLUSIVE` ensures that only a single worker thread is awakened per event, balancing distribution across the thread pool."
+  },
+  {
+    "title": "NUMA node memory interleaving vs local binding in memory-bandwidth engines",
+    "question": "Under what memory access profile is NUMA node interleaving superior to strict local node allocation in high-throughput data engines?",
+    "answer": "Strict NUMA local node allocation (`MPOL_BIND` or `numactl --membind`) maximizes latency efficiency when threads can process isolated data partitions confined entirely within their local CPU socket's memory controller. However, when multiple threads concurrently read from a shared, massive memory structure (such as an in-memory hash index or column store exceeding single-node memory bandwidth), a single memory controller becomes saturated. NUMA interleaving (`MPOL_INTERLEAVE`) stripes physical pages across all available NUMA memory channels in round-robin fashion, aggregating the aggregate bandwidth of all socket controllers."
+  },
+  {
+    "title": "C++20 std::atomic_ref: Alignment prerequisites and ABI compatibility",
+    "question": "What are the hardware alignment requirements when binding a C++20 std::atomic_ref to non-atomic object storage?",
+    "answer": "C++20 `std::atomic_ref<T>` enables atomic operations on non-atomic objects without modifying their primary storage layout. To perform lock-free operations, the target object must be aligned to `required_alignment`, which typically matches or exceeds the natural scalar alignment of `T` (e.g., 8 bytes for 64-bit integers or 16 bytes for 128-bit pointers). If an object is misaligned or packed via `#pragma pack(1)`, hardware atomic instructions (like `LOCK CMPXCHG` or `LDREX/STREX`) generate alignment faults or silently fall back to internal global mutex locks, breaking lock-free performance guarantees."
+  },
+  {
+    "title": "jemalloc Arenas and Thread-Local Caching: Lock contention mitigation",
+    "question": "How does jemalloc's arena architecture and thread-cached allocations (tcache) reduce lock contention in high-core multithreaded runtimes?",
+    "answer": "Standard allocators often suffer lock contention on central heap mutexes. jemalloc mitigates this by instantiating multiple distinct memory arenas (typically 4x the number of CPU cores). Threads are mapped to arenas via thread ID hashing. Furthermore, jemalloc assigns each thread a thread-local cache (`tcache`) that holds small allocation bins. When a thread allocates or frees small objects, it satisfies the request directly from its local `tcache` using pointer bump operations with zero mutex locks. Central arena locks are only acquired when a `tcache` bin needs flushing or refilling from slab chunks."
+  },
+  {
+    "title": "NVMe-oF (NVMe over Fabrics) TCP transport: PDU zero-copy placement",
+    "question": "How does the NVMe-oF TCP specification handle Protocol Data Unit (PDU) alignment to enable zero-copy receive in network storage controllers?",
+    "answer": "NVMe-oF over TCP defines a framed PDU structure consisting of a Common PDU Header (CH), Specific PDU Header (PSH), and an optional Data payload. To facilitate zero-copy hardware processing, headers are padded to 4-byte or 8-byte boundaries, and data offsets within the payload correspond directly to memory page alignments. Storage targets use TCP header digest (HDIGEST) and data digest (DDIGEST) CRC32C checks. By parsing the Command capsule header, the host or target network controller locates the submission queue entry and directly DMAs incoming network payload bytes into the user-space I/O memory buffer."
+  },
+  {
+    "title": "Quorum Leases in Multi-Paxos: Leader failover detection without consensus",
+    "question": "How do Quorum Leases allow a Multi-Paxos leader to serve linearizable read requests locally without performing an election round for each read?",
+    "answer": "In basic Multi-Paxos, verifying that a leader has not been superseded requires executing a consensus phase for read operations to ensure leader validity. Quorum Leases eliminate this overhead: replicas grant the leader a time-bound lease covering a bounded interval [t, t + delta]. During this lease window, replicas guarantee they will not participate in or accept proposals from any other leader. As long as the leader's local monotonic clock indicates the lease is active, the leader can serve reads directly from its local state machine with mathematical guarantee of linearizability."
+  },
+  {
+    "title": "Linux CFS sched_latency_ns vs sched_min_granularity_ns tuning",
+    "question": "What is the relationship between sched_latency_ns and sched_min_granularity_ns in Linux Completely Fair Scheduler under high task counts?",
+    "answer": "`sched_latency_ns` defines the target scheduling period during which every runnable task must be assigned the CPU at least once. Each task receives a time slice proportional to its nice priority weight: `slice = sched_latency_ns * (weight / total_weight)`. As the number of runnable tasks N increases, the individual time slice shrinks. To prevent context-switch thrashing, `sched_min_granularity_ns` sets a floor below which a task's time slice cannot drop. When N * sched_min_granularity_ns > sched_latency_ns, CFS abandons fixed latency and dynamically extends the scheduling period to N * sched_min_granularity_ns."
+  },
+  {
+    "title": "Rust borrow checker lifetime subtyping and invariance in mutable references",
+    "question": "Why are mutable references in Rust (&mut T) invariant over T while shared references (&T) are covariant over T?",
+    "answer": "A type constructor F is covariant if Sub: Super implies F<Sub>: F<Super>. Shared references `&'a T` are covariant over both `'a` and `T` because reading from a reference never allows writing an invalid type back into memory. In contrast, `&'a mut T` is invariant over `T`. If `&mut T` were covariant, a function accepting `&mut Super` could overwrite the storage of a `Sub` instance with a different subclass or shorter-lived reference of type `Super`, causing subsequent reads through the original `&mut Sub` reference to violate memory safety and type soundness."
+  },
+  {
+    "title": "Garbage Collection Write Barriers: SATB vs Incremental Update",
+    "question": "What is the operational difference between Snapshot-at-the-Beginning (SATB) and Incremental Update write barriers in concurrent collectors?",
+    "answer": "Concurrent collectors track reference mutations while application threads execute concurrently. SATB (used by G1 GC) records reference overwrites: whenever an application thread executes `obj.field = new_val`, the pre-write barrier records the overwritten old pointer into a local buffer. This guarantees that all objects alive at the start of concurrent marking remain preserved. In contrast, Incremental Update (used by CMS) records newly written references into cards when a black object points to a white object, re-marking the dirty objects during a stop-the-world pause."
+  },
+  {
+    "title": "SIMD AVX-512 frequency scaling and thermal throttling impact",
+    "question": "Why do heavy AVX-512 floating-point vector instructions trigger core frequency throttling on Intel Xeon processors, and how does it affect non-vector workloads?",
+    "answer": "AVX-512 execution units consume substantial electrical power and generate high thermal density across the execution core. To maintain stability within thermal and voltage constraints, Intel Xeon CPUs step down their clock multiplier when wide 512-bit vector instructions are executed (transitioning through License 0, License 1, and License 2 power levels). When a core downclocks to License 2, all scalar and integer instructions on that core also execute at the lower frequency. If an application interleaves occasional AVX-512 instructions with mostly scalar code, the overall throughput drops below that of optimized AVX2."
+  },
+  {
+    "title": "Zero-copy IPC using Linux memfd_create and SCM_RIGHTS descriptor passing",
+    "question": "How does the combination of memfd_create and UNIX domain socket SCM_RIGHTS achieve zero-copy high-throughput IPC between untrusted processes?",
+    "answer": "Process A calls `memfd_create(\"ipc_shm\", MFD_CLOEXEC)` to obtain an anonymous, memory-backed file descriptor. It sizes the segment with `ftruncate(2)` and populates data via `mmap(2)`. Process A then sends the file descriptor across a UNIX domain socket using `sendmsg(2)` with an `ancillary data` (`struct cmsghdr`) payload of type `SCM_RIGHTS`. The Linux kernel copies the file descriptor reference into Process B's descriptor table. Process B invokes `mmap(2)` on the received descriptor, gaining direct read access to physical memory pages without copying bytes across user-kernel boundaries."
+  },
+  {
+    "title": "CRDT state-based vs operation-based convergence proofs",
+    "question": "What mathematical properties are required for a state-based Conflict-free Replicated Data Type (CvRDT) to guarantee strong eventual consistency?",
+    "answer": "A state-based CRDT (CvRDT) models state space as a bounded semilattice equipped with a partial order <= and a binary merge operator /\\ (join) that computes the least upper bound. For convergence, the merge operator must satisfy three mathematical axioms: 1) Commutativity: a /\\ b = b /\\ a. 2) Associativity: (a /\\ b) /\\ c = a /\\ (b /\\ c). 3) Idempotence: a /\\ a = a. These properties guarantee that replica states monotonically advance along the lattice and that updates delivered out-of-order, delayed, or duplicated across networks always converge to identical values without locks."
+  },
+  {
+    "title": "Zero-overhead kTLS offload vs userspace OpenSSL record layer processing",
+    "question": "How does Linux kernel-space TLS (kTLS) with NIC crypto offload eliminate userspace buffer copies and encryption latency?",
+    "answer": "Standard userspace TLS engines (like OpenSSL) read encrypted records from the socket, copy them to user buffers, decrypt the payload with AES-NI instructions, and copy decrypted plaintext back to application memory. kTLS moves symmetric record encryption and decryption into the Linux kernel socket layer. When hardware-capable NICs are present, crypto operations are offloaded directly to the network controller. Outgoing plaintext passed to `sendfile(2)` or `splice(2)` is DMA'd directly into the NIC's transmit queue, where hardware encrypts the stream in-flight, achieving true zero-copy encryption."
+  }
+]

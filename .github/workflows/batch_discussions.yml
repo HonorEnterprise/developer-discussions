@@ -1,0 +1,27 @@
+name: Batch Discussions Manager
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to perform: create_questions or mark_answers'
+        required: true
+        default: 'create_questions'
+
+permissions:
+  discussions: write
+  contents: read
+
+jobs:
+  run-batch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Batch Operation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPERATION: ${{ github.event.inputs.operation }}
+        run: |
+          python3 .github/scripts/discussions_engine.py "$OPERATION"
