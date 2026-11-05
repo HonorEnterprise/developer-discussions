@@ -2,43 +2,46 @@ name: Discussions Runner
 
 on:
   workflow_dispatch:
+    inputs:
+      comment_id:
+        description: 'Comment ID to mark as answer'
+        required: true
+        default: 'DC_kwDOVkf2yM4BKHFG'
 
 permissions:
   discussions: write
 
 jobs:
-  test-discussion:
+  mark-answer:
     runs-on: ubuntu-latest
     steps:
-      - name: Create Discussion via GITHUB_TOKEN
+      - name: Mark Comment as Answer via GITHUB_TOKEN
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
         run: |
           python3 -c "
           import urllib.request, json, os
 
           token = os.environ['GH_TOKEN']
+          comment_id = os.environ['COMMENT_ID']
           url = 'https://api.github.com/graphql'
           query = '''
-          mutation {
-            createDiscussion(input: {
-              repositoryId: \"R_kgDOVkf2yA\",
-              categoryId: \"DIC_kwDOVkf2yM4DKesQ\",
-              title: \"Test Question: Linux io_uring SQPOLL Invariants\",
-              body: \"What are the precise kernel thread invariants of Linux io_uring when IORING_SETUP_SQPOLL is configured?\"
-            }) {
+          mutation MarkAnswer(\$id: ID!) {
+            markDiscussionCommentAsAnswer(input: {id: \$id}) {
               discussion {
                 id
-                number
-                url
-                author {
-                  login
+                answer {
+                  id
+                  author {
+                    login
+                  }
                 }
               }
             }
           }
           '''
-          req = urllib.request.Request(url, data=json.dumps({'query': query}).encode('utf-8'), headers={
+          req = urllib.request.Request(url, data=json.dumps({'query': query, 'variables': {'id': comment_id}}).encode('utf-8'), headers={
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
           })
